@@ -1,6 +1,8 @@
 # Meeting RAIDDer: Internal Teams Pilot (Revised Spec + Build Plan)
 
-Status: ready for Gate 0 (feasibility spike). Not yet approved for full build.
+Status: transcript route changed to **Recall.ai (meeting-bot API)**. Ready for Gate R (section 3). Not yet approved for full build, and not approved for any real meeting until data security signs off.
+
+**Change log:** The earlier draft made native Teams live transcripts (Work IQ) the primary route. Microsoft documents the admin controls but no delivery mechanism for live segments (the Work IQ A2A interface is a question-and-answer API), so that route is now a watch item, not the plan. Recall.ai is the primary route to try. Its onboarding guide (`recall://guides/onboarding` on the Recall MCP server) could not be read when this was written, because the server was not yet authorized. **Where the guide and this spec disagree, the guide wins for Recall setup steps.**
 
 ## 1. Goal and scope
 
@@ -16,31 +18,37 @@ A Teams meeting app with a chat bot that listens to a live meeting transcript, p
 
 | Route | Status |
 |---|---|
-| Native live transcript access (Work IQ) | Primary. Prove in Gate 0. |
-| Application-hosted audio media bot | Fallback only. Separately scoped (C#/.NET, Windows hosting, developer-preview platform). Not part of this pilot. |
+| **Recall.ai meeting bot** (third-party API) | **Primary. Prove in Gate R.** A bot joins the meeting by URL, and live transcript segments are delivered to our service. Exact delivery mechanism, latency and Teams support to be confirmed from Recall's guide. |
+| Native live transcript access (Work IQ) | Watch item. No documented live-delivery mechanism yet. Revisit if Microsoft publishes one. |
+| Self-hosted application media bot | Fallback only (C#/.NET, Windows hosting, developer-preview platform). Separately scoped. |
 | Post-meeting transcript via Graph | Recap only. Does not satisfy live detection. |
 
-If Gate 0 fails, stop the pilot path and document the blocker. Do not start the media-bot route without a new scope decision.
+**Trade-off accepted for the pilot:** meeting audio and transcripts pass through a third-party vendor. That is acceptable only after the data-security decision in Gate R item 1. If it is refused, fall back to the self-hosted media bot or the watch item.
 
-## 3. Gate 0: feasibility spike (do first)
+If Gate R fails, stop the pilot path and document the blocker.
 
-Exit with a written go/no-go. All items must be answered with evidence from our tenant.
+## 3. Gate R: Recall.ai feasibility spike (do first)
 
-1. **Access policy.** Is live transcript access enabled for our tenant? Which admin controls apply, including any recently announced or upcoming transcript-access controls? Record who owns each switch and the current state.
-2. **Identity model.** Which identity reads the live transcript (facilitator, organizer, or app) and with which delegated scopes? How does a server hold that delegation during the meeting (token acquisition, refresh, expiry)?
-3. **Delivery mechanism.** How does the service receive live transcript segments (push, polling, notifications)? What is the segment shape (speaker, text, timestamps)?
-4. **Latency.** Measure speech-to-transcript delay over at least 5 meetings of mixed pace. Report median and worst case.
-5. **Prerequisites.** Must transcription be running? Who must start it? What happens when it stops or restarts? What does the bot see when it does?
-6. **Installation.** Can the app be installed into a scheduled meeting by its organizer under our app policies (custom app upload or admin-approved catalog)?
-7. **Privacy review.** Meeting speech may include protected student or personal information. Get a written decision from data security on transcript handling, excerpt storage, model endpoint, and retention (see section 8) before any real meeting is used.
+Exit with a written go/no-go. Follow Recall's onboarding guide for setup, and record evidence for each item.
 
-**Gate decision:** go only if items 1–3 and 6 are satisfied and median speech-to-transcript latency leaves room for the delivery target in section 7.
+1. **Data-security decision (blocks real meetings).** Written approval or refusal for sending meeting audio and transcripts to Recall: data residency, retention and deletion settings, vendor review, participant notice. Until approved, use rehearsal meetings with test accounts only.
+2. **Workspace.** Confirm the Recall workspace is Western Governors University in US West (Oregon) before creating keys or webhooks. Stop if it differs.
+3. **Teams joining.** Can a Recall bot join a scheduled Teams meeting in our tenant by join URL? Record what the organizer must allow: lobby admission, external-bot policies, any tenant policy blocking third-party bots (check with the Teams admin).
+4. **Delivery mechanism.** How are live transcript segments delivered (webhook, websocket, polling), what is the segment shape (speaker, text, timestamps, partial versus final), and how are retries and ordering handled?
+5. **Latency.** Measure speech-to-segment delay over at least 5 rehearsal meetings of mixed pace. Report median and worst case.
+6. **Bot lifecycle.** Join, admitted, in-call, left, and failure states and their webhooks. What happens on kick, meeting end, or transcript errors?
+7. **Calendar scheduling.** Does Recall's calendar integration support our calendar provider (Microsoft 365 / Outlook)? What authorization is required, and who grants it?
+8. **Cost.** Per-hour bot and transcription cost at expected pilot volume.
+
+**Gate decision:** go only if items 1–6 are satisfied and median latency leaves room for the delivery target in section 7. Item 7 may be deferred to M2 without blocking go.
+
+Keep the native Work IQ check as a low-priority side test: run the Work IQ sample during a live rehearsal meeting and record whether it can supply live text. It does not block Gate R.
 
 ## 4. Meeting experience
 
-1. The organizer adds Meeting RAIDDer to a scheduled meeting and selects the project workbook and facilitator.
-2. The facilitator starts monitoring. A status card shows **active**, **paused** or **unavailable** transcript input, and updates when it changes.
-3. The detector proposes RAIDD items. The bot posts cards in the meeting chat:
+1. The facilitator opens the RAIDDer web console, pastes a Teams meeting URL, and selects the project workbook. (Calendar-based scheduling comes later: see M2.) The facilitator is the signed-in user.
+2. The facilitator launches the bot. The console shows the bot state (**joining, waiting for admission, in meeting, paused, unavailable, ended**), and the meeting organizer or a participant admits it from the lobby if required. The bot's participant name states that it is transcribing for RAIDD notes.
+3. The detector proposes RAIDD items. For the first milestones they appear as cards in the web console; posting them as cards in the Teams meeting chat is a later milestone (M4) and needs the Teams app. Card example:
 
    > **Possible Risk**
    > Supplier approval may arrive too late for the planned launch.
@@ -83,7 +91,9 @@ SharePoint Excel table columns: ID, project, category, description, owner, due d
 
 ## 8. Privacy, security and compliance
 
-- Meeting activation is explicit. Participants see that the assistant is analyzing the meeting transcript when monitoring starts.
+- Meeting activation is explicit. Participants see the bot join with a name that says it is transcribing, and the organizer is told before the first pilot meeting.
+- **Third-party processing.** Recall receives meeting audio and produces the transcript. Use only after the Gate R item 1 decision. Configure Recall to retain recordings and transcripts for the shortest period allowed, and delete after processing where the guide permits. Do not request media storage from Recall that we do not need.
+- Recall API keys and webhook secrets live in the managed secret store, never in the repository. Verify webhook signatures on every inbound request.
 - No raw audio is stored by the app.
 - Transcript text is held in memory and in the proposal store only as long as needed. Default retention for stored excerpts: set by data security in Gate 0; until then excerpts are kept only for confirmed items and a short-lived working set for open proposals, purged at meeting close.
 - Excerpts must not capture student identifiers. Apply a redaction or exclusion step for obvious personal identifiers before storage, and document its limits. This is mitigation, not a guarantee.
@@ -103,22 +113,30 @@ All five categories; rejected suggestions; corrected decisions; duplicates; unau
 ## 10. Architecture
 
 ```
-Teams meeting ─(live transcript)─► Transcript Ingest ─► Segment buffer
-                                                          │
-                                                          ▼
-                                             Detector (LLM, approved endpoint)
-                                                          │
-                                                          ▼
-Teams meeting chat ◄─ Card Publisher ◄─ Proposal Store ◄─ Dedupe/merge
-        │ (card actions)                       ▲
+Web console ─ meeting URL ─► Bot Launcher ─► Recall API ─► Recall bot joins Teams meeting
+                                                                │ (live transcript, bot status)
+                                                                ▼
+                              Webhook endpoint (signature check) ─► Segment buffer
+                                                                │
+                                                                ▼
+                                                  Detector (LLM, approved endpoint)
+                                                                │
+                                                                ▼
+Web console cards ◄─ Card Publisher ◄─ Proposal Store ◄─ Dedupe/merge
+   (Teams chat cards later)                    ▲
+        │ (confirm / edit / dismiss)           │
         ▼                                      │
-   Bot endpoint ─► Authz check ─► Confirm/Edit/Dismiss ─► Outbox ─► Excel Writer ─► SharePoint workbook
+   API ─► Authz check ─► state machine ─► Outbox ─► Excel Writer ─► SharePoint workbook
+
+Calendar (later): Recall calendar integration ─► scheduled bots ─► same ingest path
 ```
 
 Components:
 
-- **Bot and meeting app** (Teams app manifest, bot endpoint, meeting chat tab/dialog for edit and setup).
-- **Transcript ingest:** adapter interface `TranscriptSource` so the mechanism proven in Gate 0 (or a fake for tests) can be swapped in.
+- **Web console and API** (facilitator sign-in, meeting URL entry, bot launch and status, proposal cards, workbook selection). The Teams app (manifest, meeting-chat cards) is added in M4.
+- **Bot launcher:** creates and tracks Recall bots, one per meeting, with an idempotency key so a repeated click does not launch two bots. Stores bot ID, meeting URL, state.
+- **Webhook endpoint:** receives Recall transcript and bot-status events. Verifies the signature, acknowledges fast, persists the raw event before processing, and de-duplicates by event ID.
+- **Transcript ingest:** adapter interface `TranscriptSource` with a `RecallTranscriptSource` implementation (and a fake and a replay source for tests), so the route can be swapped.
 - **Detector:** takes a sliding window of segments plus open proposals; returns structured candidates (category, summary, excerpt, timestamps, optional owner/due date, merge target). Strict JSON schema output, validated.
 - **Proposal store:** durable state per meeting and proposal, status machine below.
 - **Card publisher:** batches and posts or updates adaptive cards using stored conversation references.
@@ -127,7 +145,8 @@ Components:
 
 ## 11. Stack (recommended, pending Gate 0)
 
-- TypeScript on Node.js, using the current Teams bot SDK. The native route needs no media hosting, so the .NET/Windows requirement applies only to the fallback.
+- TypeScript on Node.js with a small HTTP API and web console. Recall is called over its REST API, so no media hosting is needed. The Teams bot SDK is added in M4, and the .NET/Windows requirement applies only to the self-hosted media-bot fallback.
+- Webhooks need a publicly reachable HTTPS endpoint, so local development uses a tunnel or a deployed dev instance.
 - Hosting: one managed container service in our cloud tenant. Single instance is acceptable for the pilot, with state in the database so restarts are safe.
 - Storage: a managed relational database (Postgres or Azure SQL) for proposals, outbox, meeting state and audit log.
 - Secrets: managed key vault.
@@ -143,22 +162,26 @@ Transitions are enforced in one module and guarded by version checks, so repeate
 
 ## 13. Milestones (ordered, no dates)
 
-- **M0 — Gate 0 spike** (section 3). Output: go/no-go and measured latency. Nothing below starts without go.
-- **M1 — Thin vertical slice.** One category (Risk). Real transcript source, hard-coded facilitator, one card, Confirm only, one Excel row. This proves the full loop: spoken statement, transcript, chat card, facilitator confirmation, Excel row.
-- **M2 — Core loop hardening.** Edit and Dismiss, status card (active/paused/unavailable), proposal store with state machine, outbox and retry, idempotency, facilitator authorization, meeting-end summary.
+- **M0 — Gate R spike** (section 3). Output: go/no-go, measured latency, and the data-security decision. Nothing below runs against a real meeting without go. Work that needs no live Recall access (interfaces, fakes, state machine, evaluation set) may start before go.
+- **M1 — Thin vertical slice.** Paste a meeting URL in the console, launch a bot, receive live transcript, detect one category (Risk), show one card, Confirm only, write one Excel row. Proves the loop: spoken statement, transcript, card, facilitator confirmation, Excel row.
+- **M2 — Core loop hardening and calendar scheduling.** Edit and Dismiss, bot-state display, proposal store with state machine, outbox and retry, idempotency, facilitator authorization, meeting-end summary, and calendar-based scheduling through Recall's calendar integration (if Gate R item 7 supports it).
 - **M3 — Detector.** All five categories, structured output, dedupe and merge, batching, evaluation set and scorecard, latency instrumentation.
-- **M4 — Resilience and privacy.** Facilitator reassign, token re-auth flow, reconnect handling, redaction step, retention purge, audit log, full failure-behavior test pass (section 9).
+- **M4 — Resilience, privacy and Teams cards.** Facilitator reassign, token re-auth flow, reconnect and webhook-replay handling, redaction step, retention purge, audit log, full failure-behavior test pass (section 9), and the Teams app with meeting-chat cards.
 - **M5 — Pilot.** Install in real meetings per section 7 criteria, collect feedback, report.
 
 ## 14. First actions
 
-1. Create the Gate 0 checklist as a tracked task list and assign an owner for each item (tenant admin for items 1, 6; data security for item 7).
-2. Stand up a throwaway Teams app and test meeting to run items 2–5.
-3. In parallel, write the evaluation set (section 7) and the `TranscriptSource` and `Detector` interfaces with fakes, which do not depend on Gate 0 results.
-4. Record the Gate 0 decision at the top of this file before starting M1.
+1. Authorize the Recall MCP server (`/mcp` in Claude Code, signing in to the Western Governors University workspace, US West (Oregon)), then read `recall://guides/onboarding` and follow it. Record any difference from this section.
+2. Create the Gate R checklist as a tracked task list and assign an owner for each item (data security for item 1, Teams admin for item 3).
+3. Run items 3–6 with a rehearsal meeting and test accounts only.
+4. In parallel, write the evaluation set (section 7) and the `TranscriptSource` and `Detector` interfaces with fakes and a replay source, which do not depend on Gate R results.
+5. Record the Gate R decision at the top of this file before starting M1.
 
 ## 15. Open questions
 
+- Will data security approve Recall, and under what retention and residency settings?
+- Does Recall's calendar integration cover our Microsoft 365 calendars, and who authorizes it?
+- Which participants must be told a bot is joining, and how?
 - Which model endpoint is approved, and what are its rate and cost limits?
 - Retention period for excerpts and audit logs.
 - Is excerpt storage acceptable at all for meetings that may mention students, or must the workbook hold summaries only?
