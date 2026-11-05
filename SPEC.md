@@ -12,7 +12,7 @@ A Teams meeting app with a chat bot that listens to a live meeting transcript, p
 
 **Non-goals:** email-address "participant" invitations, external or ad hoc meetings, audio capture or storage, multi-language, multiple facilitators, auto-confirmation of any item.
 
-**Unverified external facts.** Everything below about Microsoft APIs, permissions and policies is a working assumption until confirmed in Gate 0 against current Microsoft documentation and our tenant. Do not build past Gate 0 on an assumption that has not been tested.
+**Unverified external facts.** Everything below about Recall.ai and Microsoft APIs, permissions and policies is a working assumption until confirmed in Gate R against Recall's onboarding guide, current Microsoft documentation and our tenant. Do not build past Gate R on an assumption that has not been tested.
 
 ## 2. Transcript input routes
 
@@ -77,7 +77,7 @@ Repeated discussion updates an existing proposal rather than creating a new one.
 SharePoint Excel table columns: ID, project, category, description, owner, due date, status, meeting link, evidence timestamp, evidence excerpt, confirmer, confirmation time, source proposal ID.
 
 - Stable item ID: derived from meeting ID plus proposal ID. Unique key in the table. Used for idempotent writes.
-- Writes use the facilitator's delegated Microsoft authorization (Graph Excel row-add is assumed not to support application permissions; confirm in Gate 0).
+- Writes use the facilitator's delegated Microsoft authorization (Graph Excel row-add is assumed not to support application permissions; confirm in Gate R or M1).
 - Failed writes enter a durable queue. The card shows "Confirmed — Excel sync pending" until the write succeeds, then updates. If delegated authorization can no longer be refreshed, the card prompts the facilitator to sign in again, and items are not lost.
 - Workbook access follows the SharePoint site permissions. The facilitator must have edit access, which is verified when the workbook is selected.
 
@@ -95,7 +95,7 @@ SharePoint Excel table columns: ID, project, category, description, owner, due d
 - **Third-party processing.** Recall receives meeting audio and produces the transcript. Use only after the Gate R item 1 decision. Configure Recall to retain recordings and transcripts for the shortest period allowed, and delete after processing where the guide permits. Do not request media storage from Recall that we do not need.
 - Recall API keys and webhook secrets live in the managed secret store, never in the repository. Verify webhook signatures on every inbound request.
 - No raw audio is stored by the app.
-- Transcript text is held in memory and in the proposal store only as long as needed. Default retention for stored excerpts: set by data security in Gate 0; until then excerpts are kept only for confirmed items and a short-lived working set for open proposals, purged at meeting close.
+- Transcript text is held in memory and in the proposal store only as long as needed. Default retention for stored excerpts: set by data security in Gate R; until then excerpts are kept only for confirmed items and a short-lived working set for open proposals, purged at meeting close.
 - Excerpts must not capture student identifiers. Apply a redaction or exclusion step for obvious personal identifiers before storage, and document its limits. This is mitigation, not a guarantee.
 - Use only an organization-approved model endpoint, with no training on our data.
 - Secrets in a managed secret store. Delegated refresh tokens encrypted at rest and scoped per facilitator.
@@ -143,7 +143,7 @@ Components:
 - **Outbox and Excel writer:** transactional outbox, idempotent row upsert keyed on item ID, retry with backoff.
 - **Auth service:** per-facilitator delegated token storage and refresh.
 
-## 11. Stack (recommended, pending Gate 0)
+## 11. Stack (recommended, pending Gate R)
 
 - TypeScript on Node.js with a small HTTP API and web console. Recall is called over its REST API, so no media hosting is needed. The Teams bot SDK is added in M4, and the .NET/Windows requirement applies only to the self-hosted media-bot fallback.
 - Webhooks need a publicly reachable HTTPS endpoint, so local development uses a tunnel or a deployed dev instance.
